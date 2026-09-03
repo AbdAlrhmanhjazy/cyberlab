@@ -5,36 +5,66 @@ from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 
-SOCIAL_PLATFORMS = [
-    {"name": "Telegram", "category": "تراسل فوري", "url_template": "https://t.me/{}", "check_type": "telegram"},
-    {"name": "GitHub", "category": "برمجة وتطوير", "url_template": "https://github.com/{}", "check_type": "status_code"},
-    {"name": "TikTok", "category": "فيديو وشبكات اجتماعية", "url_template": "https://www.tiktok.com/@{}", "check_type": "status_code"},
-    {"name": "Pinterest", "category": "محتوى وصور", "url_template": "https://www.pinterest.com/{}/", "check_type": "status_code"},
-    {"name": "Reddit", "category": "مجتمعات ونقاشات", "url_template": "https://www.reddit.com/user/{}", "check_type": "status_code"},
-    {"name": "Chess.com", "category": "ألعاب ورياضة ذهنية", "url_template": "https://api.chess.com/pub/player/{}", "check_type": "status_code"},
-    {"name": "SoundCloud", "category": "صوتيات وموسيقى", "url_template": "https://soundcloud.com/{}", "check_type": "status_code"}
-]
-
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-def check_target_platform(platform, username):
-    url = platform["url_template"].format(username)
-    check_type = platform["check_type"]
+def check_account(platform_name, username):
+    username = username.strip().replace(" ", "")
+    
     try:
-        if check_type == "status_code":
-            r = requests.get(url, headers=HEADERS, timeout=4, allow_redirects=False)
-            if r.status_code == 200:
-                return {"platform": platform["name"], "category": platform["category"], "found": True, "info": f"حساب نشط: @{username}", "link": url}
-        elif check_type == "telegram":
+        if platform_name == "GitHub":
+            url = f"https://api.github.com/users/{username}"
             r = requests.get(url, headers=HEADERS, timeout=4)
-            if r.status_code == 200 and 'tgme_page_extra' in r.text:
-                return {"platform": "Telegram", "category": platform["category"], "found": True, "info": f"حساب تليجرام نشط: @{username}", "link": url}
+            if r.status_code == 200:
+                data = r.json()
+                return {
+                    "platform": "GitHub", "category": "برمجة وتطوير", "found": True,
+                    "info": f"حساب نشط: {data.get('name') or username}",
+                    "link": f"https://github.com/{username}"
+                }
+
+        elif platform_name == "Telegram":
+            url = f"https://t.me/{username}"
+            r = requests.get(url, headers=HEADERS, timeout=4)
+            # تيليجرام يضع هذا الكلاس فقط إذا كان الحساب/القناة موجودة فعلاً
+            if r.status_code == 200 and 'tgme_page_extra' in r.text and 'tgme_page_title' in r.text:
+                return {
+                    "platform": "Telegram", "category": "تراسل فوري", "found": True,
+                    "info": f"حساب أو قناة نشطة على تليجرام",
+                    "link": url
+                }
+
+        elif platform_name == "Chess.com":
+            url = f"https://api.chess.com/pub/player/{username}"
+            r = requests.get(url, headers=HEADERS, timeout=4)
+            if r.status_code == 200:
+                return {
+                    "platform": "Chess.com", "category": "ألعاب ورياضة", "found": True,
+                    "info": f"ملف لاعب نشط",
+                    "link": f"https://www.chess.com/member/{username}"
+                }
+
+        elif platform_name == "Reddit":
+            url = f"https://www.reddit.com/user/{username}/about.json"
+            r = requests.get(url, headers=HEADERS, timeout=4)
+            if r.status_code == 200 and 'data' in r.json():
+                return {
+                    "platform": "Reddit", "category": "مجتمعات ونقاشات", "found": True,
+                    "info": f"حساب مسجل ونشط",
+                    "link": f"https://www.reddit.com/user/{username}"
+                }
+
     except Exception:
         pass
 
-    return {"platform": platform["name"], "category": platform["category"], "found": False, "info": f"غير مسجل بالمعرف @{username}", "link": ""}
+    return {
+        "platform": platform_name,
+        "category": "سوشيال ميديا",
+        "found": False,
+        "info": f"لا يوجد حساب بهذا المعرف",
+        "link": ""
+    }
 
 @app.route('/')
 def index():
@@ -45,16 +75,19 @@ def scan():
     data = request.json or {}
     raw_input = data.get('email', '').strip()
     if not raw_input:
-        return jsonify({"error": "يرجى كتابة البريد أو المعرف"}), 400
+        return jsonify({"error": "يرجى إدخال اسم المستخدم أو البريد"}), 400
 
-    username = raw_input.split('@')[0].strip() if '@' in raw_input else raw_input
+    # تنظيف المدخلات وحذف المسافات وأي نطاق إيميل
+    username = raw_input.split('@')[0].strip().replace(" ", "")
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [executor.submit(check_target_platform, p, username) for p in SOCIAL_PLATFORMS]
+    platforms = ["GitHub", "Telegram", "Chess.com", "Reddit"]
+    
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(check_account, p, username) for p in platforms]
         results = [f.result() for f in futures]
 
     found_accounts = sum(1 for r in results if r['found'])
-    exposure_level = "مرتفع" if found_accounts >= 2 else ("متوسط" if found_accounts == 1 else "منخفض")
+    exposure_level = "مرتفع" if found_accounts >= 2 else ("متوسط" if found_accounts == 1 else "منخفض / لا توجد ارتباطات عامة")
 
     return jsonify({
         "target": raw_input,
