@@ -3,159 +3,228 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CyberLab | لوحة التحكم</title>
+    <title>CyberLab | مركز المراقبة والعمليات الأمنية (SOC)</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-4 md:p-8 font-sans">
-    <header class="flex flex-col md:flex-row justify-between items-center border-b border-gray-700 pb-4 mb-8 gap-4">
+<body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-8 font-mono">
+
+    <!-- Header -->
+    <header class="flex flex-col md:flex-row justify-between items-center border-b border-gray-800 pb-5 mb-8 gap-4">
         <div class="flex items-center gap-3">
-            <span class="text-3xl">🛡️</span>
+            <span class="text-3xl text-emerald-400 animate-pulse">📡</span>
             <div>
-                <h1 class="text-2xl font-bold text-emerald-400 tracking-wide">منصة CyberLab</h1>
-                <p class="text-xs text-gray-400">نظام فحص وتقييم أمان الأنظمة والمنافذ</p>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-2xl font-bold tracking-wider text-white">CYBERLAB // SOC DASHBOARD</h1>
+                    <span class="bg-emerald-900/60 border border-emerald-500 text-emerald-300 text-xs px-2.5 py-0.5 rounded">نظام الرصد الحي</span>
+                </div>
+                <p class="text-xs text-gray-400 mt-1">منظومة مراقبة سلامة الشبكات ورصد التهديدات والمحاولات المشبوهة</p>
             </div>
         </div>
-        <span class="text-xs bg-emerald-950 text-emerald-300 border border-emerald-700 px-3 py-1.5 rounded-full font-medium">● النظام جاهز ومصرح</span>
+        <div class="flex items-center gap-4 bg-gray-900 border border-gray-800 px-4 py-2 rounded-lg">
+            <span class="text-xs text-gray-400">حالة التأهب العام:</span>
+            <span class="text-xs font-bold text-yellow-400 tracking-wider">DEFCON 3 // مراقبة مستمرة</span>
+        </div>
     </header>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div class="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-lg">
-            <h3 class="text-white font-semibold text-sm flex items-center gap-2 mb-3">
-                <span class="w-2 h-2 rounded-full bg-emerald-400"></span> 1. إضافة نظام مصرح باختباره
-            </h3>
-            <div class="space-y-2">
-                <input id="targetName" type="text" placeholder="اسم الجهاز (مثلاً: سيرفر التجارب)" class="w-full p-2.5 bg-gray-700/60 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500">
-                <input id="targetHost" type="text" placeholder="IP أو الدومين (مثلاً: 127.0.0.1)" class="w-full p-2.5 bg-gray-700/60 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500">
-            </div>
-            <button onclick="addTarget()" class="mt-3 w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-sm font-semibold transition">حفظ الهدف في القاعدة</button>
+    <!-- Top KPI Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl">
+            <span class="text-xs text-gray-400">إجمالي الأصول المراقبة</span>
+            <p id="totalAssets" class="text-2xl font-bold text-white mt-1">0</p>
         </div>
-
-        <div class="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-lg">
-            <h3 class="text-white font-semibold text-sm flex items-center gap-2 mb-3">
-                <span class="w-2 h-2 rounded-full bg-blue-400"></span> 2. بدء الفحص الأمني
-            </h3>
-            <div class="space-y-2">
-                <input id="scanTargetId" type="number" placeholder="رقم الهدف (Target ID) مثلاً: 1" class="w-full p-2.5 bg-gray-700/60 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500">
-            </div>
-            <button onclick="runScan()" class="mt-3 w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-sm font-semibold transition">بدء الفحص الآن</button>
-            <div id="scanStatus" class="mt-2 text-xs text-yellow-400 hidden animate-pulse">⏳ جاري فحص المنافذ والخدمات...</div>
+        <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl">
+            <span class="text-xs text-gray-400">نقاط اتصال نشطة (Online)</span>
+            <p id="onlineAssets" class="text-2xl font-bold text-emerald-400 mt-1">0</p>
         </div>
-
-        <div class="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-lg flex flex-col justify-between">
-            <h3 class="text-white font-semibold text-sm flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-purple-400"></span> ملخص النتائج السريع
-            </h3>
-            <div class="grid grid-cols-2 gap-4 my-2 text-center">
-                <div class="bg-gray-900/60 p-3 rounded-lg border border-red-900/40">
-                    <span class="text-2xl font-bold text-red-400" id="highCount">0</span>
-                    <p class="text-xs text-gray-400 mt-1">مخاطر عالية</p>
-                </div>
-                <div class="bg-gray-900/60 p-3 rounded-lg border border-emerald-900/40">
-                    <span class="text-2xl font-bold text-emerald-400" id="lowCount">0</span>
-                    <p class="text-xs text-gray-400 mt-1">منخفضة / عادية</p>
-                </div>
-            </div>
-            <p class="text-xs text-gray-400 text-center">مستوى الأمان العام للمختبر</p>
+        <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl">
+            <span class="text-xs text-gray-400">انقطاعات مكتشفة (Alerts)</span>
+            <p id="offlineAssets" class="text-2xl font-bold text-red-400 mt-1">0</p>
+        </div>
+        <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl">
+            <span class="text-xs text-gray-400">إجمالي التهديدات المرصودة</span>
+            <p id="totalThreats" class="text-2xl font-bold text-yellow-400 mt-1">0</p>
         </div>
     </div>
 
-    <section class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
+    <!-- Main Grid: Monitored Assets + Add Asset Form -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        
+        <!-- Add Asset Control -->
+        <div class="bg-gray-900 border border-gray-800 p-5 rounded-xl">
+            <h2 class="text-sm font-bold text-emerald-400 mb-4 flex items-center gap-2">
+                <span>➕</span> تسجيل نقطة شبكية للمراقبة
+            </h2>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs text-gray-400 block mb-1">اسم الأصل أو السيرفر</label>
+                    <input id="assetName" type="text" placeholder="مثال: وحدة المراقبة الحدودية" class="w-full bg-gray-950 border border-gray-700 rounded p-2 text-xs text-white focus:border-emerald-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 block mb-1">عنوان IP أو النطاق</label>
+                    <input id="assetHost" type="text" placeholder="مثال: scanme.nmap.org أو 1.1.1.1" class="w-full bg-gray-950 border border-gray-700 rounded p-2 text-xs text-white focus:border-emerald-500 focus:outline-none">
+                </div>
+                <button onclick="addAsset()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded text-xs font-bold transition">
+                    + إدراج في مصفوفة الرصد
+                </button>
+            </div>
+        </div>
+
+        <!-- Live Asset Grid -->
+        <div class="lg:col-span-2 bg-gray-900 border border-gray-800 p-5 rounded-xl">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                    <span>📡</span> حالة سلامة ونبض الأنظمة (Real-Time Heartbeat)
+                </h2>
+                <button onclick="pingAll()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded transition">
+                    تحديث النبض للكل 🔄
+                </button>
+            </div>
+            <div id="assetsList" class="space-y-3 max-h-72 overflow-y-auto pr-1">
+                <p class="text-xs text-gray-500 text-center py-6">جاري جلب قائمة الأجهزة المتصلة...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Threat Logs (SIEM Feed) -->
+    <section class="bg-gray-900 border border-gray-800 p-5 rounded-xl">
         <div class="flex justify-between items-center mb-4">
-            <h2 class="text-base font-semibold text-white">📋 تقرير النتائج التفصيلي</h2>
-            <span class="text-xs text-gray-400">يتم التحديث تلقائياً بعد كل فحص</span>
+            <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                <span>🚨</span> سجل الرصد الأمني والمحاولات المشبوهة (Live Security Event Feed)
+            </h2>
+            <span class="text-xs text-gray-500">تحديث تلقائي كل 5 ثوانٍ</span>
         </div>
         <div class="overflow-x-auto">
-            <table class="w-full text-right border-collapse">
+            <table class="w-full text-right text-xs">
                 <thead>
-                    <tr class="border-b border-gray-700 text-gray-400 text-xs">
-                        <th class="py-3 px-2">المنفذ</th>
-                        <th class="px-2">الخدمة</th>
-                        <th class="px-2">مستوى الخطورة</th>
-                        <th class="px-2">وصف النتيجة</th>
-                        <th class="px-2">التوصية الأمنية</th>
+                    <tr class="border-b border-gray-800 text-gray-400">
+                        <th class="py-2.5 px-3">الوقت</th>
+                        <th class="px-3">نوع الحدث</th>
+                        <th class="px-3">مصدر التهديد (Source IP)</th>
+                        <th class="px-3">الهدف المستهدف</th>
+                        <th class="px-3">مستوى الخطورة</th>
+                        <th class="px-3">تفاصيل الرصد</th>
                     </tr>
                 </thead>
-                <tbody id="findingsTable" class="text-sm divide-y divide-gray-700">
-                    <tr><td colspan="5" class="py-6 text-center text-gray-500">لا توجد نتائج معروضة حالياً، ابدأ الفحص أعلاه لعرض التقرير.</td></tr>
+                <tbody id="logsTable" class="divide-y divide-gray-800 text-gray-300">
+                    <tr><td colspan="6" class="text-center py-4 text-gray-600">جاري تحميل سجلات الرصد...</td></tr>
                 </tbody>
             </table>
         </div>
     </section>
 
     <script>
-        async function addTarget() {
-            const name = document.getElementById('targetName').value;
-            const host = document.getElementById('targetHost').value;
-            if(!name || !host) {
-                alert('الرجاء كتابة اسم الجهاز وعنوان IP أو الدومين');
+        let assets = [];
+
+        async function fetchAssets() {
+            const res = await fetch('/api/assets');
+            assets = await res.json();
+            renderAssets();
+        }
+
+        function renderAssets() {
+            const list = document.getElementById('assetsList');
+            const total = document.getElementById('totalAssets');
+            const online = document.getElementById('onlineAssets');
+            const offline = document.getElementById('offlineAssets');
+
+            total.innerText = assets.length;
+            let onCount = 0; let offCount = 0;
+
+            if (assets.length === 0) {
+                list.innerHTML = '<p class="text-xs text-gray-500 text-center py-6">لا توجد أجهزة مسجلة حالياً، أضف أول جهاز من القائمة الجانبية.</p>';
+                online.innerText = 0; offline.innerText = 0;
                 return;
             }
-            const res = await fetch('/api/targets', {
+
+            list.innerHTML = '';
+            assets.forEach(a => {
+                const isOnline = a.status === 'ONLINE';
+                if(isOnline) onCount++; else offCount++;
+
+                list.innerHTML += `
+                    <div class="bg-gray-950 border border-gray-800 p-3 rounded-lg flex flex-col md:flex-row justify-between items-center gap-3">
+                        <div class="flex items-center gap-3">
+                            <span class="w-3 h-3 rounded-full ${isOnline ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-red-500'}"></span>
+                            <div>
+                                <p class="text-xs font-bold text-white">${a.name}</p>
+                                <p class="text-[11px] text-gray-500 font-mono">${a.host}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="text-xs font-mono text-gray-400">${isOnline ? a.latency_ms + ' ms' : '--'}</span>
+                            <span class="text-[11px] px-2 py-0.5 rounded ${isOnline ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-700' : 'bg-red-900/60 text-red-300 border border-red-700'}">
+                                ${a.status}
+                            </span>
+                            <button onclick="pingSingle(${a.id})" class="text-[11px] bg-gray-800 hover:bg-gray-700 px-2.5 py-1 rounded text-gray-300 transition">
+                                فحص النبض
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            online.innerText = onCount;
+            offline.innerText = offCount;
+        }
+
+        async function addAsset() {
+            const name = document.getElementById('assetName').value;
+            const host = document.getElementById('assetHost').value;
+            if(!name || !host) {
+                alert('يرجى كتابة اسم الجهاز وعنوانه أولاً');
+                return;
+            }
+            await fetch('/api/assets', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ name, host })
             });
-            const data = await res.json();
-            alert('تم تسجيل الهدف بنجاح! رقم الهدف هو: ' + data.target_id);
-            document.getElementById('scanTargetId').value = data.target_id;
+            document.getElementById('assetName').value = '';
+            document.getElementById('assetHost').value = '';
+            await fetchAssets();
         }
 
-        async function runScan() {
-            const targetId = document.getElementById('scanTargetId').value;
-            if(!targetId) {
-                alert('الرجاء إدخال رقم الهدف أولاً');
-                return;
+        async function pingSingle(id) {
+            await fetch('/api/assets/ping/' + id, { method: 'POST' });
+            await fetchAssets();
+            await fetchLogs();
+        }
+
+        async function pingAll() {
+            for(let a of assets) {
+                await fetch('/api/assets/ping/' + a.id, { method: 'POST' });
             }
-            document.getElementById('scanStatus').classList.remove('hidden');
-            try {
-                const res = await fetch('/api/scan/start', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ target_id: targetId })
-                });
-                const data = await res.json();
-                document.getElementById('scanStatus').classList.add('hidden');
-                if(data.scan_id) {
-                    loadReport(data.scan_id);
-                } else {
-                    alert('خطأ: لم يتم العثور على هذا الهدف');
+            await fetchAssets();
+            await fetchLogs();
+        }
+
+        async function fetchLogs() {
+            const res = await fetch('/api/logs');
+            const logs = await res.json();
+            const tbody = document.getElementById('logsTable');
+            document.getElementById('totalThreats').innerText = logs.length;
+            tbody.innerHTML = '';
+
+            logs.forEach(l => {
+                let badge = 'bg-yellow-900/60 text-yellow-300 border border-yellow-700';
+                if(l.severity === 'CRITICAL' || l.severity === 'HIGH') {
+                    badge = 'bg-red-900/60 text-red-300 border border-red-700';
                 }
-            } catch (err) {
-                document.getElementById('scanStatus').classList.add('hidden');
-                alert('حدث خطأ أثناء إجراء الفحص');
-            }
-        }
-
-        async function loadReport(scanId) {
-            const res = await fetch('/api/reports/' + scanId);
-            const findings = await res.json();
-            const table = document.getElementById('findingsTable');
-            table.innerHTML = '';
-            
-            if(findings.length === 0) {
-                table.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-emerald-400">لم يتم اكتشاف منافذ مفتوحة أو مخاطر في هذا الفحص الأولي.</td></tr>';
-                document.getElementById('highCount').innerText = 0;
-                document.getElementById('lowCount').innerText = 0;
-                return;
-            }
-
-            let high = 0, low = 0;
-            findings.forEach(f => {
-                if (f.severity === 'HIGH') high++; else low++;
-                const badgeClass = f.severity === 'HIGH' ? 'bg-red-900/60 text-red-300 border border-red-700' : 'bg-emerald-900/60 text-emerald-300 border border-emerald-700';
-                table.innerHTML += `
-                    <tr class="hover:bg-gray-700/30">
-                        <td class="py-3 px-2 font-mono">${f.port}</td>
-                        <td class="px-2 font-medium">${f.service}</td>
-                        <td class="px-2"><span class="px-2 py-0.5 rounded text-xs ${badgeClass}">${f.severity}</span></td>
-                        <td class="px-2 text-gray-300">${f.description}</td>
-                        <td class="px-2 text-gray-400 text-xs">${f.remediation}</td>
+                tbody.innerHTML += `
+                    <tr class="hover:bg-gray-800/40">
+                        <td class="py-2.5 px-3 text-gray-400 font-mono">${l.timestamp}</td>
+                        <td class="px-3 font-semibold text-white">${l.event_type}</td>
+                        <td class="px-3 font-mono text-cyan-400">${l.source_ip}</td>
+                        <td class="px-3">${l.target_asset}</td>
+                        <td class="px-3"><span class="px-2 py-0.5 rounded text-[10px] ${badge}">${l.severity}</span></td>
+                        <td class="px-3 text-gray-300">${l.message}</td>
                     </tr>
                 `;
             });
-            document.getElementById('highCount').innerText = high;
-            document.getElementById('lowCount').innerText = low;
         }
+
+        fetchAssets();
+        fetchLogs();
+        setInterval(fetchLogs, 5000);
     </script>
 </body>
 </html>

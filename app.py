@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 import sqlite3
 import socket
+import time
 import os
 
 app = Flask(__name__)
@@ -12,67 +13,115 @@ def get_db():
     return conn
 
 def init_db():
-    if not os.path.exists(DB_NAME):
-        with get_db() as conn:
-            with open("schema.sql", "r") as f:
-                conn.executescript(f.read())
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS monitored_assets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                host TEXT NOT NULL,
+                status TEXT DEFAULT 'OFFLINE',
+                latency_ms INTEGER DEFAULT 0,
+                last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS security_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                source_ip TEXT NOT NULL,
+                target_asset TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                message TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # إضافة سجلات استشعارية افتراضية للمحاكاة
+        count = conn.execute("SELECT COUNT(*) as c FROM security_logs").fetchone()['c']
+        if count == 0:
+            conn.execute("""
+                INSERT INTO security_logs (event_type, source_ip, target_asset, severity, message)
+                VALUES 
+                ('PORT_SWEEP', '192.168.1.104', 'Command Center Server', 'HIGH', 'محاولة مسح منافذ متسلسلة غير مصرح بها'),
+                ('AUTH_FAILURE', '45.133.1.20', 'Auth Gateway', 'CRITICAL', 'تكرار محاولات دخول فاشلة (Brute Force detected)'),
+                ('UNUSUAL_TRAFFIC', '192.168.1.55', 'HQ Router', 'MEDIUM', 'ارتفاع مفاجئ في حركة البيانات خارج أوقات العمل')
+            """)
+            conn.commit()
 
 @app.route('/')
-def dashboard():
+def index():
     return render_template('index.html')
 
-@app.route('/api/targets', methods=['POST'])
-def add_target():
-    data = request.json
+@app.route('/api/assets', methods=['GET', 'POST'])
+def handle_assets():
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO targets (target_name, ip_or_domain) VALUES (?, ?)",
-        (data['name'], data['host'])
-    )
-    conn.commit()
-    return jsonify({"status": "success", "target_id": cursor.lastrowid})
+    if request.method == 'POST':
+        data = request.json
+        cursor.execute("INSERT INTO monitored_assets (name, host) VALUES (?, ?)", (data['name'], data['host']))
+        conn.commit()
+        return jsonify({"status": "success", "id": cursor.lastrowid})
+    else:
+        assets = cursor.execute("SELECT * FROM monitored_assets").fetchall()
+        return jsonify([dict(a) for a in assets])
 
-@app.route('/api/scan/start', methods=['POST'])
-def start_scan():
-    data = request.json
-    target_id = data.get('target_id')
+@app.route('/api/assets/ping/<int:asset_id>', methods=['POST'])
+def ping_asset(asset_id):
     conn = get_db()
     cursor = conn.cursor()
-    
-    cursor.execute("SELECT ip_or_domain FROM targets WHERE id = ?", (target_id,))
-    target = cursor.fetchone()
-    if not target:
-        return jsonify({"error": "Target not found"}), 404
+    asset = cursor.execute("SELECT * FROM monitored_assets WHERE id = ?", (asset_id,)).fetchone()
+    if not asset:
+        return jsonify({"error": "Asset not found"}), 404
 
-    cursor.execute("INSERT INTO scans (target_id, status) VALUES (?, 'COMPLETED')", (target_id,))
-    scan_id = cursor.lastrowid
-
-    host = target['ip_or_domain']
-    common_ports = [(80, 'HTTP'), (443, 'HTTPS'), (22, 'SSH'), (21, 'FTP')]
+    host = asset['host']
+    status = 'OFFLINE'
+    latency = 0
+    ports_to_try = [80, 443, 22, 53]
     
-    for port, service in common_ports:
+    start = time.time()
+    reachable = False
+    for p in ports_to_try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(0.5)
-        result = s.connect_ex((host, port))
-        if result == 0:
-            severity = 'HIGH' if port == 21 else 'LOW'
-            cursor.execute("""
-                INSERT INTO findings (scan_id, service, port, severity, description, remediation)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (scan_id, service, port, severity, 
-                  f"Service {service} is exposed on port {port}.", 
-                  "Restrict access via firewall if not needed."))
+        s.settimeout(0.6)
+        res = s.connect_ex((host, p))
         s.close()
+        if res == 0:
+            reachable = True
+            break
+            
+    if reachable:
+        latency = int((time.time() - start) * 1000)
+        status = 'ONLINE'
+    else:
+        # فحص بديل عبر حل الاسم (DNS) للتأكد من وجود الخادم
+        try:
+            socket.gethostbyname(host)
+            latency = int((time.time() - start) * 1000)
+            status = 'ONLINE'
+        except Exception:
+            status = 'OFFLINE'
+            latency = 0
+
+    cursor.execute("""
+        UPDATE monitored_assets 
+        SET status = ?, latency_ms = ?, last_checked = CURRENT_TIMESTAMP 
+        WHERE id = ?
+    """, (status, latency, asset_id))
+    
+    # إذا كان السيرفر أوفلاين يتم إطلاق تنبيه في سجلات الرصد
+    if status == 'OFFLINE':
+        cursor.execute("""
+            INSERT INTO security_logs (event_type, source_ip, target_asset, severity, message)
+            VALUES ('NODE_DOWN', 'SYSTEM_MONITOR', ?, 'HIGH', 'انقطاع الاتصال بنقطة اتصال استراتيجية')
+        """, (asset['name'],))
 
     conn.commit()
-    return jsonify({"status": "completed", "scan_id": scan_id})
+    return jsonify({"id": asset_id, "status": status, "latency": latency})
 
-@app.route('/api/reports/<int:scan_id>', methods=['GET'])
-def get_report(scan_id):
+@app.route('/api/logs', methods=['GET'])
+def get_logs():
     conn = get_db()
-    findings = conn.execute("SELECT * FROM findings WHERE scan_id = ?", (scan_id,)).fetchall()
-    return jsonify([dict(f) for f in findings])
+    logs = conn.execute("SELECT * FROM security_logs ORDER BY id DESC LIMIT 20").fetchall()
+    return jsonify([dict(l) for l in logs])
 
 init_db()
 
