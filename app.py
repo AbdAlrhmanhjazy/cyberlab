@@ -1,129 +1,156 @@
 from flask import Flask, render_template, request, jsonify
-import sqlite3
-import socket
-import time
+import requests
 import os
+import re
 
 app = Flask(__name__)
-DB_NAME = "cyberlab.db"
 
-def get_db():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    return conn
+# قائمة مبسطة وسريعة لفحص المواقع والخدمات الشائعة عبر الاستجابة العامة
+SITES = [
+    {
+        "name": "GitHub",
+        "category": "برمجة ومطورين",
+        "check_url": "https://api.github.com/legacy/user/email/{email}",
+        "check_type": "status_200"
+    },
+    {
+        "name": "Gravatar (WordPress Profile)",
+        "category": "مدونات وتطبيقات الويب",
+        "check_url": "https://en.gravatar.com/{hash}.json",
+        "check_type": "gravatar"
+    },
+    {
+        "name": "Adobe / Creative Cloud",
+        "category": "تصميم وتطبيقات",
+        "check_url": "https://auth.services.adobe.com/signin/v2/users/accounts",
+        "check_type": "post_adobe"
+    },
+    {
+        "name": "Twitter / X (Password Reset Hint)",
+        "category": "شبكات اجتماعية",
+        "check_url": "https://api.x.com/i/users/email_available.json?email={email}",
+        "check_type": "json_taken"
+    },
+    {
+        "name": "Spotify",
+        "category": "محتوى وترفيه",
+        "check_url": "https://spclient.wg.spotify.com/signup/public/v1/account?validate=1&email={email}",
+        "check_type": "json_spotify"
+    }
+]
 
-def init_db():
-    with get_db() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS monitored_assets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                host TEXT NOT NULL,
-                status TEXT DEFAULT 'OFFLINE',
-                latency_ms INTEGER DEFAULT 0,
-                last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS security_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_type TEXT NOT NULL,
-                source_ip TEXT NOT NULL,
-                target_asset TEXT NOT NULL,
-                severity TEXT NOT NULL,
-                message TEXT NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        # إضافة سجلات استشعارية افتراضية للمحاكاة
-        count = conn.execute("SELECT COUNT(*) as c FROM security_logs").fetchone()['c']
-        if count == 0:
-            conn.execute("""
-                INSERT INTO security_logs (event_type, source_ip, target_asset, severity, message)
-                VALUES 
-                ('PORT_SWEEP', '192.168.1.104', 'Command Center Server', 'HIGH', 'محاولة مسح منافذ متسلسلة غير مصرح بها'),
-                ('AUTH_FAILURE', '45.133.1.20', 'Auth Gateway', 'CRITICAL', 'تكرار محاولات دخول فاشلة (Brute Force detected)'),
-                ('UNUSUAL_TRAFFIC', '192.168.1.55', 'HQ Router', 'MEDIUM', 'ارتفاع مفاجئ في حركة البيانات خارج أوقات العمل')
-            """)
-            conn.commit()
+import hashlib
+
+def check_gravatar(email):
+    email_hash = hashlib.md5(email.strip().lower().encode('utf-8')).hexdigest()
+    url = f"https://en.gravatar.com/{email_hash}.json"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        r = requests.get(url, headers=headers, timeout=3)
+        if r.status_code == 200:
+            data = r.json()
+            entry = data.get('entry', [{}])[0]
+            profile_url = entry.get('profileUrl', f"https://gravatar.com/{email_hash}")
+            username = entry.get('preferredUsername', 'حساب نشط')
+            return {"exists": True, "details": f"مستخدم نشط: {username}", "link": profile_url}
+    except Exception:
+        pass
+    return {"exists": False}
+
+def check_spotify(email):
+    url = f"https://spclient.wg.spotify.com/signup/public/v1/account?validate=1&email={email}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        r = requests.get(url, headers=headers, timeout=3)
+        # status 20 indicates email exists on Spotify
+        if r.status_code == 200 and r.json().get('status') == 20:
+            return {"exists": True, "details": "البريد مسجل ولديه حساب نشط", "link": "https://open.spotify.com"}
+    except Exception:
+        pass
+    return {"exists": False}
+
+def check_github(email):
+    url = f"https://api.github.com/search/users?q={email}+in:email"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        r = requests.get(url, headers=headers, timeout=3)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get('total_count', 0) > 0:
+                user = data['items'][0]['login']
+                return {"exists": True, "details": f"حساب عام مرتبط: @{user}", "link": f"https://github.com/{user}"}
+    except Exception:
+        pass
+    return {"exists": False}
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/api/assets', methods=['GET', 'POST'])
-def handle_assets():
-    conn = get_db()
-    cursor = conn.cursor()
-    if request.method == 'POST':
-        data = request.json
-        cursor.execute("INSERT INTO monitored_assets (name, host) VALUES (?, ?)", (data['name'], data['host']))
-        conn.commit()
-        return jsonify({"status": "success", "id": cursor.lastrowid})
-    else:
-        assets = cursor.execute("SELECT * FROM monitored_assets").fetchall()
-        return jsonify([dict(a) for a in assets])
-
-@app.route('/api/assets/ping/<int:asset_id>', methods=['POST'])
-def ping_asset(asset_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    asset = cursor.execute("SELECT * FROM monitored_assets WHERE id = ?", (asset_id,)).fetchone()
-    if not asset:
-        return jsonify({"error": "Asset not found"}), 404
-
-    host = asset['host']
-    status = 'OFFLINE'
-    latency = 0
-    ports_to_try = [80, 443, 22, 53]
+@app.route('/api/scan', methods=['POST'])
+def scan_email():
+    data = request.json or {}
+    email = data.get('email', '').strip().lower()
     
-    start = time.time()
-    reachable = False
-    for p in ports_to_try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(0.6)
-        res = s.connect_ex((host, p))
-        s.close()
-        if res == 0:
-            reachable = True
-            break
-            
-    if reachable:
-        latency = int((time.time() - start) * 1000)
-        status = 'ONLINE'
-    else:
-        # فحص بديل عبر حل الاسم (DNS) للتأكد من وجود الخادم
-        try:
-            socket.gethostbyname(host)
-            latency = int((time.time() - start) * 1000)
-            status = 'ONLINE'
-        except Exception:
-            status = 'OFFLINE'
-            latency = 0
+    if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        return jsonify({"error": "يرجى كتابة عنوان بريد إلكتروني صالح ومكتمل"}), 400
 
-    cursor.execute("""
-        UPDATE monitored_assets 
-        SET status = ?, latency_ms = ?, last_checked = CURRENT_TIMESTAMP 
-        WHERE id = ?
-    """, (status, latency, asset_id))
+    results = []
+
+    # فحص المنصات المباشرة
+    # 1. GitHub
+    gh = check_github(email)
+    results.append({
+        "platform": "GitHub Developer Network",
+        "category": "أدوات برمجية وتطوير",
+        "found": gh["exists"],
+        "info": gh.get("details", "لا يوجد حساب عام بهذا البريد"),
+        "link": gh.get("link", "")
+    })
+
+    # 2. Gravatar
+    gv = check_gravatar(email)
+    results.append({
+        "platform": "Gravatar (Wordpress & Tech Network)",
+        "category": "شبكات تقنية ومواقع شخصية",
+        "found": gv["exists"],
+        "info": gv.get("details", "لا توجد بصمة مسجلة في شبكة ووردبريس"),
+        "link": gv.get("link", "")
+    })
+
+    # 3. Spotify
+    sp = check_spotify(email)
+    results.append({
+        "platform": "Spotify",
+        "category": "منصات البث والوسائط",
+        "found": sp["exists"],
+        "info": sp.get("details", "البريد غير مستخدم كحساب مسجل"),
+        "link": sp.get("link", "")
+    })
+
+    # 4. محاكاة فحص تسريبات الأمان (Breach Intelligence)
+    # تقييم النطاق (Domain Assessment)
+    domain = email.split('@')[1]
+    is_corporate = domain not in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com']
     
-    # إذا كان السيرفر أوفلاين يتم إطلاق تنبيه في سجلات الرصد
-    if status == 'OFFLINE':
-        cursor.execute("""
-            INSERT INTO security_logs (event_type, source_ip, target_asset, severity, message)
-            VALUES ('NODE_DOWN', 'SYSTEM_MONITOR', ?, 'HIGH', 'انقطاع الاتصال بنقطة اتصال استراتيجية')
-        """, (asset['name'],))
+    results.append({
+        "platform": "Domain & Mail MX Records",
+        "category": "البنية التحتية للخادم",
+        "found": True,
+        "info": f"نطاق البريد: {domain} ({'بريد مؤسسي/خاص' if is_corporate else 'مزود بريد عام مجاني'})",
+        "link": f"https://{domain}"
+    })
 
-    conn.commit()
-    return jsonify({"id": asset_id, "status": status, "latency": latency})
+    # إحصائيات
+    found_count = sum(1 for r in results if r['found'] and r['platform'] != "Domain & Mail MX Records")
+    risk_level = "مرتفع (بصمة رقمية منتشرة)" if found_count >= 2 else ("متوسط" if found_count == 1 else "منخفض / بريد حديث أو محمي")
 
-@app.route('/api/logs', methods=['GET'])
-def get_logs():
-    conn = get_db()
-    logs = conn.execute("SELECT * FROM security_logs ORDER BY id DESC LIMIT 20").fetchall()
-    return jsonify([dict(l) for l in logs])
-
-init_db()
+    return jsonify({
+        "email": email,
+        "found_accounts": found_count,
+        "exposure_level": risk_level,
+        "results": results
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
