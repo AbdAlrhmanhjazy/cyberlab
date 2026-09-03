@@ -1,154 +1,66 @@
 from flask import Flask, render_template, request, jsonify
 import requests
 import os
-import re
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 
-# قائمة مبسطة وسريعة لفحص المواقع والخدمات الشائعة عبر الاستجابة العامة
-SITES = [
-    {
-        "name": "GitHub",
-        "category": "برمجة ومطورين",
-        "check_url": "https://api.github.com/legacy/user/email/{email}",
-        "check_type": "status_200"
-    },
-    {
-        "name": "Gravatar (WordPress Profile)",
-        "category": "مدونات وتطبيقات الويب",
-        "check_url": "https://en.gravatar.com/{hash}.json",
-        "check_type": "gravatar"
-    },
-    {
-        "name": "Adobe / Creative Cloud",
-        "category": "تصميم وتطبيقات",
-        "check_url": "https://auth.services.adobe.com/signin/v2/users/accounts",
-        "check_type": "post_adobe"
-    },
-    {
-        "name": "Twitter / X (Password Reset Hint)",
-        "category": "شبكات اجتماعية",
-        "check_url": "https://api.x.com/i/users/email_available.json?email={email}",
-        "check_type": "json_taken"
-    },
-    {
-        "name": "Spotify",
-        "category": "محتوى وترفيه",
-        "check_url": "https://spclient.wg.spotify.com/signup/public/v1/account?validate=1&email={email}",
-        "check_type": "json_spotify"
-    }
+SOCIAL_PLATFORMS = [
+    {"name": "Telegram", "category": "تراسل فوري", "url_template": "https://t.me/{}", "check_type": "telegram"},
+    {"name": "GitHub", "category": "برمجة وتطوير", "url_template": "https://github.com/{}", "check_type": "status_code"},
+    {"name": "TikTok", "category": "فيديو وشبكات اجتماعية", "url_template": "https://www.tiktok.com/@{}", "check_type": "status_code"},
+    {"name": "Pinterest", "category": "محتوى وصور", "url_template": "https://www.pinterest.com/{}/", "check_type": "status_code"},
+    {"name": "Reddit", "category": "مجتمعات ونقاشات", "url_template": "https://www.reddit.com/user/{}", "check_type": "status_code"},
+    {"name": "Chess.com", "category": "ألعاب ورياضة ذهنية", "url_template": "https://api.chess.com/pub/player/{}", "check_type": "status_code"},
+    {"name": "SoundCloud", "category": "صوتيات وموسيقى", "url_template": "https://soundcloud.com/{}", "check_type": "status_code"}
 ]
 
-import hashlib
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+}
 
-def check_gravatar(email):
-    email_hash = hashlib.md5(email.strip().lower().encode('utf-8')).hexdigest()
-    url = f"https://en.gravatar.com/{email_hash}.json"
-    headers = {"User-Agent": "Mozilla/5.0"}
+def check_target_platform(platform, username):
+    url = platform["url_template"].format(username)
+    check_type = platform["check_type"]
     try:
-        r = requests.get(url, headers=headers, timeout=3)
-        if r.status_code == 200:
-            data = r.json()
-            entry = data.get('entry', [{}])[0]
-            profile_url = entry.get('profileUrl', f"https://gravatar.com/{email_hash}")
-            username = entry.get('preferredUsername', 'حساب نشط')
-            return {"exists": True, "details": f"مستخدم نشط: {username}", "link": profile_url}
+        if check_type == "status_code":
+            r = requests.get(url, headers=HEADERS, timeout=4, allow_redirects=False)
+            if r.status_code == 200:
+                return {"platform": platform["name"], "category": platform["category"], "found": True, "info": f"حساب نشط: @{username}", "link": url}
+        elif check_type == "telegram":
+            r = requests.get(url, headers=HEADERS, timeout=4)
+            if r.status_code == 200 and 'tgme_page_extra' in r.text:
+                return {"platform": "Telegram", "category": platform["category"], "found": True, "info": f"حساب تليجرام نشط: @{username}", "link": url}
     except Exception:
         pass
-    return {"exists": False}
 
-def check_spotify(email):
-    url = f"https://spclient.wg.spotify.com/signup/public/v1/account?validate=1&email={email}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        r = requests.get(url, headers=headers, timeout=3)
-        # status 20 indicates email exists on Spotify
-        if r.status_code == 200 and r.json().get('status') == 20:
-            return {"exists": True, "details": "البريد مسجل ولديه حساب نشط", "link": "https://open.spotify.com"}
-    except Exception:
-        pass
-    return {"exists": False}
-
-def check_github(email):
-    url = f"https://api.github.com/search/users?q={email}+in:email"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        r = requests.get(url, headers=headers, timeout=3)
-        if r.status_code == 200:
-            data = r.json()
-            if data.get('total_count', 0) > 0:
-                user = data['items'][0]['login']
-                return {"exists": True, "details": f"حساب عام مرتبط: @{user}", "link": f"https://github.com/{user}"}
-    except Exception:
-        pass
-    return {"exists": False}
+    return {"platform": platform["name"], "category": platform["category"], "found": False, "info": f"غير مسجل بالمعرف @{username}", "link": ""}
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/api/scan', methods=['POST'])
-def scan_email():
+def scan():
     data = request.json or {}
-    email = data.get('email', '').strip().lower()
-    
-    if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-        return jsonify({"error": "يرجى كتابة عنوان بريد إلكتروني صالح ومكتمل"}), 400
+    raw_input = data.get('email', '').strip()
+    if not raw_input:
+        return jsonify({"error": "يرجى كتابة البريد أو المعرف"}), 400
 
-    results = []
+    username = raw_input.split('@')[0].strip() if '@' in raw_input else raw_input
 
-    # فحص المنصات المباشرة
-    # 1. GitHub
-    gh = check_github(email)
-    results.append({
-        "platform": "GitHub Developer Network",
-        "category": "أدوات برمجية وتطوير",
-        "found": gh["exists"],
-        "info": gh.get("details", "لا يوجد حساب عام بهذا البريد"),
-        "link": gh.get("link", "")
-    })
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(check_target_platform, p, username) for p in SOCIAL_PLATFORMS]
+        results = [f.result() for f in futures]
 
-    # 2. Gravatar
-    gv = check_gravatar(email)
-    results.append({
-        "platform": "Gravatar (Wordpress & Tech Network)",
-        "category": "شبكات تقنية ومواقع شخصية",
-        "found": gv["exists"],
-        "info": gv.get("details", "لا توجد بصمة مسجلة في شبكة ووردبريس"),
-        "link": gv.get("link", "")
-    })
-
-    # 3. Spotify
-    sp = check_spotify(email)
-    results.append({
-        "platform": "Spotify",
-        "category": "منصات البث والوسائط",
-        "found": sp["exists"],
-        "info": sp.get("details", "البريد غير مستخدم كحساب مسجل"),
-        "link": sp.get("link", "")
-    })
-
-    # 4. محاكاة فحص تسريبات الأمان (Breach Intelligence)
-    # تقييم النطاق (Domain Assessment)
-    domain = email.split('@')[1]
-    is_corporate = domain not in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com']
-    
-    results.append({
-        "platform": "Domain & Mail MX Records",
-        "category": "البنية التحتية للخادم",
-        "found": True,
-        "info": f"نطاق البريد: {domain} ({'بريد مؤسسي/خاص' if is_corporate else 'مزود بريد عام مجاني'})",
-        "link": f"https://{domain}"
-    })
-
-    # إحصائيات
-    found_count = sum(1 for r in results if r['found'] and r['platform'] != "Domain & Mail MX Records")
-    risk_level = "مرتفع (بصمة رقمية منتشرة)" if found_count >= 2 else ("متوسط" if found_count == 1 else "منخفض / بريد حديث أو محمي")
+    found_accounts = sum(1 for r in results if r['found'])
+    exposure_level = "مرتفع" if found_accounts >= 2 else ("متوسط" if found_accounts == 1 else "منخفض")
 
     return jsonify({
-        "email": email,
-        "found_accounts": found_count,
-        "exposure_level": risk_level,
+        "target": raw_input,
+        "username": username,
+        "found_accounts": found_accounts,
+        "exposure_level": exposure_level,
         "results": results
     })
 
