@@ -3,117 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CyberLab | منظومة التحقيق الرقمي والاستخبارات (OSINT)</title>
+    <title>CyberLab | OSINT Intelligence</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-8 font-mono">
-
-    <!-- Header -->
-    <header class="flex flex-col md:flex-row justify-between items-center border-b border-gray-800 pb-5 mb-8 gap-4">
-        <div class="flex items-center gap-3">
-            <span class="text-3xl text-cyan-400 animate-pulse">🔍</span>
-            <div>
-                <div class="flex items-center gap-2">
-                    <h1 class="text-2xl font-bold tracking-wider text-white">CYBERLAB // OSINT FOOTPRINT ANALYZER</h1>
-                    <span class="bg-cyan-900/60 border border-cyan-500 text-cyan-300 text-xs px-2.5 py-0.5 rounded">الاستخبارات مفتوحة المصدر</span>
-                </div>
-                <p class="text-xs text-gray-400 mt-1">محرك استعلام وتتبع الحسابات والارتباطات الرقمية عبر البريد الإلكتروني</p>
-            </div>
+    <header class="flex justify-between items-center border-b border-gray-800 pb-5 mb-8">
+        <div>
+            <h1 class="text-xl font-bold text-white">CYBERLAB // OSINT MULTI-TARGET ENGINE</h1>
+            <p class="text-xs text-gray-400 mt-1">تتبع البصمة الرقمية وكشف حسابات التواصل المباشرة</p>
         </div>
-        <div class="flex items-center gap-3 bg-gray-900 border border-gray-800 px-4 py-2 rounded-lg">
-            <span class="text-xs text-gray-400">نطاق الاستعلام:</span>
-            <span class="text-xs font-bold text-cyan-400 tracking-wider">OPEN INVESTIGATION (ACTIVE)</span>
-        </div>
+        <span class="bg-cyan-950 border border-cyan-500 text-cyan-300 text-xs px-3 py-1 rounded">محرك نشط</span>
     </header>
 
-    <!-- Search Box -->
-    <div class="max-w-3xl mx-auto bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-2xl mb-8">
-        <label class="block text-xs font-semibold text-gray-300 mb-2">أدخل عنوان البريد الإلكتروني للبدء في التحقيق والبحث:</label>
+    <div class="max-w-3xl mx-auto bg-gray-900 border border-gray-800 p-6 rounded-2xl mb-8">
+        <label class="block text-xs font-semibold text-gray-300 mb-2">أدخل البريد الإلكتروني أو اسم المستخدم:</label>
         <div class="flex flex-col sm:flex-row gap-3">
-            <input id="targetEmail" type="email" placeholder="example@gmail.com" 
-                   class="flex-1 bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:border-cyan-500 focus:outline-none tracking-wider">
-            <button onclick="startInvestigate()" id="scanBtn"
-                    class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-6 py-3 rounded-xl text-sm transition flex items-center justify-center gap-2">
-                <span>استعلام وكشف الحسابات</span>
-                <span>⚡</span>
+            <input id="targetInput" type="text" placeholder="example@gmail.com أو اسم المستخدم" 
+                   class="flex-1 bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-500">
+            <button onclick="startInvestigation()" id="scanBtn"
+                    class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-6 py-3 rounded-xl text-sm transition">
+                كشف وتعقب الحسابات ⚡
             </button>
         </div>
-        <p class="text-[11px] text-gray-500 mt-2">يقوم المحرك بإرسال طلبات فحص متزامنة إلى واجهات التحقق العامة لمعرفة وجود حسابات نشطة أو بصمات رقمية عامة مرتبطة بالبريد.</p>
     </div>
 
-    <!-- Results Section -->
     <div id="resultsCard" class="max-w-4xl mx-auto hidden">
-        <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl">
-                <span class="text-xs text-gray-400">الهدف المفحوص</span>
-                <p id="resEmail" class="text-sm font-bold text-white mt-1 break-all">--</p>
+            <div class="bg-gray-900 border border-gray-800 p-4 rounded-xl">
+                <span class="text-xs text-gray-400">الهدف / المعرف المستخرج</span>
+                <p id="resTarget" class="text-sm font-bold text-cyan-400 mt-1 break-all">--</p>
             </div>
-            <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl">
-                <span class="text-xs text-gray-400">حسابات وبصمات مكتشفة</span>
-                <p id="resCount" class="text-2xl font-bold text-cyan-400 mt-1">0</p>
+            <div class="bg-gray-900 border border-gray-800 p-4 rounded-xl">
+                <span class="text-xs text-gray-400">حسابات نشطة مكتشفة</span>
+                <p id="resCount" class="text-2xl font-bold text-emerald-400 mt-1">0</p>
             </div>
-            <div class="bg-gray-900/90 border border-gray-800 p-4 rounded-xl">
-                <span class="text-xs text-gray-400">مستوى الظهور الرقمي (Exposure)</span>
+            <div class="bg-gray-900 border border-gray-800 p-4 rounded-xl">
+                <span class="text-xs text-gray-400">مستوى البصمة الرقمية</span>
                 <p id="resExposure" class="text-sm font-bold text-yellow-400 mt-1">--</p>
             </div>
         </div>
 
-        <!-- Table of Discovered Platforms -->
         <div class="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-800 flex justify-between items-center">
-                <h2 class="text-sm font-bold text-white flex items-center gap-2">
-                    <span>📑</span> تقرير نتائج الاستخبارات الرقمية والمنصات المرتبطة
-                </h2>
-                <span class="text-xs text-gray-500">تم التوثيق لحظياً</span>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-right text-xs">
-                    <thead>
-                        <tr class="bg-gray-950/60 border-b border-gray-800 text-gray-400">
-                            <th class="py-3 px-4">المنصة / الخدمة</th>
-                            <th class="px-4">التصنيف</th>
-                            <th class="px-4">الحالة</th>
-                            <th class="px-4">تفاصيل البصمة</th>
-                            <th class="px-4">الإجراء</th>
-                        </tr>
-                    </thead>
-                    <tbody id="platformsTable" class="divide-y divide-gray-800 text-gray-300">
-                    </tbody>
-                </table>
-            </div>
+            <table class="w-full text-right text-xs">
+                <thead>
+                    <tr class="bg-gray-950 border-b border-gray-800 text-gray-400">
+                        <th class="py-3 px-4">المنصة</th>
+                        <th class="px-4">التصنيف</th>
+                        <th class="px-4">الحالة</th>
+                        <th class="px-4">التفاصيل</th>
+                        <th class="px-4">رابط البروفايل</th>
+                    </tr>
+                </thead>
+                <tbody id="platformsTable" class="divide-y divide-gray-800 text-gray-300"></tbody>
+            </table>
         </div>
     </div>
 
     <script>
-        async function startInvestigate() {
-            const email = document.getElementById('targetEmail').value.trim();
+        async function startInvestigation() {
+            const inputVal = document.getElementById('targetInput').value.trim();
             const btn = document.getElementById('scanBtn');
             const resultsCard = document.getElementById('resultsCard');
 
-            if (!email) {
-                alert('يرجى كتابة البريد الإلكتروني أولاً');
-                return;
-            }
+            if (!inputVal) return alert('يرجى إدخال البريد أو اسم المستخدم');
 
             btn.disabled = true;
-            btn.innerHTML = '<span>جاري التحقيق والفحص...</span> ⏳';
+            btn.innerText = 'جاري الفحص المباشر...';
 
             try {
                 const res = await fetch('/api/scan', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ email })
+                    body: JSON.stringify({ email: inputVal })
                 });
-
                 const data = await res.json();
-                if (res.status !== 200) {
-                    alert(data.error || 'حدث خطأ أثناء الاستعلام');
-                    return;
-                }
-
-                // Fill data
-                document.getElementById('resEmail').innerText = data.email;
+                
+                document.getElementById('resTarget').innerText = `${data.target} (@${data.username})`;
                 document.getElementById('resCount').innerText = data.found_accounts;
                 document.getElementById('resExposure').innerText = data.exposure_level;
 
@@ -121,30 +86,28 @@
                 tbody.innerHTML = '';
 
                 data.results.forEach(item => {
-                    const isFound = item.found;
                     tbody.innerHTML += `
                         <tr class="hover:bg-gray-800/40">
                             <td class="py-3 px-4 font-bold text-white">${item.platform}</td>
                             <td class="px-4 text-gray-400">${item.category}</td>
                             <td class="px-4">
-                                <span class="px-2.5 py-1 rounded text-[10px] font-bold ${isFound ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-600' : 'bg-gray-800 text-gray-400'}">
-                                    ${isFound ? '✔ مسجل / نشط' : '✖ غير مسجل'}
+                                <span class="px-2 py-1 rounded text-[10px] font-bold ${item.found ? 'bg-emerald-950 text-emerald-300 border border-emerald-600' : 'bg-gray-800 text-gray-400'}">
+                                    ${item.found ? '✔ متوفر' : '✖ غير متوفر'}
                                 </span>
                             </td>
-                            <td class="px-4 text-gray-300 font-mono">${item.info}</td>
+                            <td class="px-4 text-gray-300">${item.info}</td>
                             <td class="px-4">
-                                ${item.link ? `<a href="${item.link}" target="_blank" class="text-cyan-400 underline hover:text-cyan-300">فتح الرابط ↗</a>` : '<span class="text-gray-600">--</span>'}
+                                ${item.link ? `<a href="${item.link}" target="_blank" class="text-cyan-400 underline font-bold">فتح البروفايل ↗</a>` : '<span class="text-gray-600">--</span>'}
                             </td>
                         </tr>
                     `;
                 });
-
                 resultsCard.classList.remove('hidden');
             } catch (err) {
-                alert('تعذر الاتصال بالخادم، تأكد من اتصال الإنترنت.');
+                alert('حدث خطأ في الاتصال بالخادم');
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '<span>استعلام وكشف الحسابات</span> ⚡';
+                btn.innerText = 'كشف وتعقب الحسابات ⚡';
             }
         }
     </script>
